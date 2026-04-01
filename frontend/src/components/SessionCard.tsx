@@ -137,6 +137,11 @@ export default function SessionCard({ session, onStop, onRemove, onRefresh }: Pr
                 <span className="font-medium text-sm truncate">
                     {session.projectName}
                 </span>
+                {session.model && (
+                    <span className="text-zinc-500 text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded shrink-0">
+                        {session.model.replace(/^claude-/, "").replace(/-\d{8}$/, "")}
+                    </span>
+                )}
                 <span className="text-zinc-500 text-xs truncate flex-1">
                     {promptPreview}
                 </span>

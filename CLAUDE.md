@@ -14,15 +14,15 @@ Three-tier system: **Next.js frontend** (port 3000) → **FastAPI backend** (por
 
 - **Frontend** (`frontend/`): Next.js with TypeScript, Tailwind CSS, App Router, `src/` directory. Communicates via REST (`/api/*`) for actions and WebSocket (`/ws/run/{run_id}`) for live streaming.
 - **Backend** (`backend/`): FastAPI (Python 3.11+). Manages projects (Git repos in `projects/`), creates ephemeral workspace clones in `workspaces/`, launches Docker containers via the Docker SDK, and streams container logs over WebSocket.
-- **Container image**: Uses the `claude-code` image from `nkrimmel/docker-claude-yolo` (Node 22, Claude Code via native installer). Auth works via subscription credentials (`~/.claude` mounted into container). A fallback `docker/` directory contains a custom Dockerfile + `entrypoint.sh` for headless runs with auto-branching and auto-commit.
+- **Container image**: Built from `docker/Dockerfile` (Node 20, Claude Code via npm). The backend invokes `claude -p` directly with the user's prompt. Auth works via subscription credentials (`~/.claude` mounted into container).
 
 Key data flow: `POST /api/run` → clone project to workspace → start container → client connects `ws://…/ws/run/{run_id}` → backend streams container stdout → container finishes → cleanup.
 
 ## Build & Run Commands
 
 ```bash
-# Build the claude-yolo container image
-docker build -t claude-yolo:latest -f docker/Dockerfile docker/
+# Build the claude-code container image
+docker build -t claude-code:latest -f docker/Dockerfile docker/
 
 # Start everything via Docker Compose
 docker compose up --build -d
@@ -49,10 +49,10 @@ Frontend uses `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL`.
 
 - **Network isolation**: Containers run with `network_mode: none` by default — no internet access.
 - **Ephemeral workspaces**: Each run gets a local Git clone so the original project repo is never modified directly.
-- **Feature branches**: `entrypoint.sh` auto-creates a `claude-yolo/<timestamp>` branch and commits all changes there.
+- **Feature branches**: The backend's `ProjectManager` creates a `claude-yolo/<timestamp>` branch in the workspace before starting the container.
 - **Non-root containers**: The Dockerfile creates a `claude` user for least-privilege execution.
 - **In-memory run tracking**: `DockerManager.active_runs` is a dict — no database yet. Run history is lost on restart.
 
 ## Language
 
-The spec and UI strings are in German. Maintain German for user-facing strings (UI labels, log messages in entrypoint.sh). Code comments and variable names use English.
+The spec and UI strings are in German. Maintain German for user-facing strings (UI labels). Code comments and variable names use English.

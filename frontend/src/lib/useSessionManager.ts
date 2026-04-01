@@ -121,6 +121,7 @@ export function useSessionManager() {
                     projectId: run.project_id || "",
                     projectName: project?.name || run.project_id || "Unbekannt",
                     prompt: "(wiederhergestellt)",
+                    model: "",
                     status: "running" as const,
                     lines: [],
                     startedAt: new Date(),
@@ -146,12 +147,18 @@ export function useSessionManager() {
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const startSession = useCallback(
-        async (projectId: string, projectName: string, prompt: string) => {
+        async (
+            projectId: string,
+            projectName: string,
+            prompt: string,
+            model: string,
+        ) => {
             const session: Session = {
                 id: "",
                 projectId,
                 projectName,
                 prompt,
+                model,
                 status: "running",
                 lines: [],
                 startedAt: new Date(),
@@ -161,7 +168,7 @@ export function useSessionManager() {
 
             let runId: string;
             try {
-                const run = await startRun(projectId, prompt);
+                const run = await startRun(projectId, prompt, model);
                 runId = run.run_id;
             } catch (e) {
                 const errorMsg = e instanceof Error ? e.message : String(e);

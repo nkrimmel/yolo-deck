@@ -55,7 +55,7 @@ export async function browseDirectory(path: string): Promise<DirEntry[]> {
 export async function startRun(
     projectId: string,
     prompt: string,
-    model?: string
+    model?: string,
 ): Promise<RunResponse> {
     const res = await fetch(`${API_BASE}/api/run`, {
         method: "POST",

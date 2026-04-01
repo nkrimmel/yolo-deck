@@ -15,6 +15,7 @@ export default function Dashboard() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<string>("");
     const [prompt, setPrompt] = useState("");
+    const [model, setModel] = useState("claude-sonnet-4-20250514");
     const {
         sessions,
         activeCount,
@@ -73,7 +74,7 @@ export default function Dashboard() {
         if (!selectedProject || !prompt.trim()) return;
         const project = projects.find((p) => p.id === selectedProject);
         if (!project) return;
-        await startSession(selectedProject, project.name, prompt);
+        await startSession(selectedProject, project.name, prompt, model);
     };
 
     return (
@@ -264,6 +265,28 @@ export default function Dashboard() {
                     className="w-full bg-zinc-900 border border-zinc-700
                                rounded px-3 py-2 resize-y"
                 />
+            </div>
+
+            {/* Model */}
+            <div className="mb-4">
+                <label className="block text-sm text-zinc-400 mb-1">
+                    Model
+                </label>
+                <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700
+                               rounded px-3 py-2 text-sm"
+                >
+                    <optgroup label="Claude 4">
+                        <option value="claude-opus-4-20250514">Opus 4</option>
+                        <option value="claude-sonnet-4-20250514">Sonnet 4</option>
+                    </optgroup>
+                    <optgroup label="Claude 3.5">
+                        <option value="claude-3-5-sonnet-20241022">Sonnet 3.5</option>
+                        <option value="claude-3-5-haiku-20241022">Haiku 3.5</option>
+                    </optgroup>
+                </select>
             </div>
 
             {/* Aktions-Button */}

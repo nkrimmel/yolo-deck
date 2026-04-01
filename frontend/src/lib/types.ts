@@ -17,6 +17,7 @@ export interface Session {
     projectId: string;
     projectName: string;
     prompt: string;
+    model: string;
     status: SessionStatus;
     lines: StreamMessage[];
     startedAt: Date;

@@ -17,13 +17,7 @@ RUN npm install -g @anthropic-ai/claude-code
 # Arbeitsverzeichnis im Container
 WORKDIR /workspace
 
-# Entrypoint-Script
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
 # Nicht-Root-User für Sicherheit
 RUN useradd -m -s /bin/bash claude && \
     chown -R claude:claude /workspace
 USER claude
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
