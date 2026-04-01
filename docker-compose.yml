@@ -33,3 +33,25 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  telegram-bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    command: ["python", "run_telegram.py"]
+    volumes:
+      - ./projects:/app/projects
+      - ./workspaces:/app/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.claude:/host-claude:ro
+      - ~/.claude.json:/host-claude.json:ro
+    environment:
+      - YOLO_PROJECTS_DIR=/app/projects
+      - YOLO_WORKSPACES_DIR=/app/workspaces
+      - YOLO_CLAUDE_HOME=/host-claude
+      - YOLO_CLAUDE_JSON=/host-claude.json
+      - YOLO_TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - YOLO_TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
+      # Optional: uncomment if using API key auth instead of subscription
+      # - YOLO_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped

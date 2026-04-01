@@ -31,12 +31,17 @@ class Settings(BaseSettings):
     # Browse — root path for the directory browser (host mount in Docker)
     browse_root: str = "~"
 
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_allowed_users: list[int] = []
+    telegram_max_message_length: int = 4000
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
     allowed_origins: list[str] = ["http://localhost:3000"]
 
-    model_config = {"env_file": ".env", "env_prefix": "YOLO_"}
+    model_config = {"env_file": [".env", str(_repo_root / ".env")], "env_prefix": "YOLO_"}
 
 
 settings = Settings()

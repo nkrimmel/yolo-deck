@@ -1,2 +1,36 @@
-frontend/node_modules/
-frontend/node_modules/
+# Secrets
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+
+# Docker workspaces (ephemeral)
+workspaces/
+
+# Projects (user-specific symlinks)
+projects/*
+!projects/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
