@@ -204,9 +204,22 @@ class DockerManager:
             run["synced"] = True
 
     def list_active_runs(self) -> list[dict]:
-        """Alle bekannten Runs mit Basis-Info auflisten."""
+        """Alle bekannten Runs mit Basis-Info auflisten. Aktualisiert Container-Status."""
         result = []
         for run_id, run in self.active_runs.items():
+            # Update status from actual container state
+            if run["status"] == RunStatus.RUNNING:
+                try:
+                    container = self.client.containers.get(run["container_id"])
+                    container.reload()
+                    if container.status == "exited":
+                        exit_code = container.attrs.get("State", {}).get("ExitCode", -1)
+                        run["status"] = RunStatus.COMPLETED if exit_code == 0 else RunStatus.FAILED
+                except docker.errors.NotFound:
+                    run["status"] = RunStatus.FAILED
+                except Exception:
+                    pass
+
             result.append({
                 "run_id": run_id,
                 "status": run["status"],
