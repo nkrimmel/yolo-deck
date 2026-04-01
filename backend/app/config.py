@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     claude_home: Path = Path.home() / ".claude"
     claude_json: Path = Path.home() / ".claude.json"
+    # Host paths for auth credentials (used for Docker volume mounts).
+    # When running in Docker, claude_home/claude_json point to container paths,
+    # but we need the original host paths for mounting into claude containers.
+    claude_home_host: str = ""
+    claude_json_host: str = ""
 
     # Claude
     default_model: str = "claude-sonnet-4-20250514"
@@ -30,11 +35,16 @@ class Settings(BaseSettings):
 
     # Browse — root path for the directory browser (host mount in Docker)
     browse_root: str = "~"
+    # Host home path — the actual host path that browse_root maps to.
+    # In Docker: browse_root=/host/home, host_home_path=$HOME on the host.
+    # Used to translate container paths back to host paths for Docker volume mounts.
+    host_home_path: str = ""
 
     # Telegram
     telegram_bot_token: str = ""
     telegram_allowed_users: list[int] = []
     telegram_max_message_length: int = 4000
+    telegram_api_base: str = ""  # Backend URL for the bot (default: http://{host}:{port})
 
     # Server
     host: str = "0.0.0.0"

@@ -17,7 +17,10 @@ services:
       - YOLO_WORKSPACES_DIR=/app/workspaces
       - YOLO_CLAUDE_HOME=/host-claude
       - YOLO_CLAUDE_JSON=/host-claude.json
+      - YOLO_CLAUDE_HOME_HOST=${HOME}/.claude
+      - YOLO_CLAUDE_JSON_HOST=${HOME}/.claude.json
       - YOLO_BROWSE_ROOT=/host/home
+      - YOLO_HOST_HOME_PATH=${HOME}
       # Optional: uncomment if using API key auth instead of subscription
       # - YOLO_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     restart: unless-stopped
@@ -50,8 +53,9 @@ services:
       - YOLO_WORKSPACES_DIR=/app/workspaces
       - YOLO_CLAUDE_HOME=/host-claude
       - YOLO_CLAUDE_JSON=/host-claude.json
-      - YOLO_TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - YOLO_TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
+      - YOLO_TELEGRAM_BOT_TOKEN=${YOLO_TELEGRAM_BOT_TOKEN}
+      - YOLO_TELEGRAM_ALLOWED_USERS=${YOLO_TELEGRAM_ALLOWED_USERS}
+      - YOLO_TELEGRAM_API_BASE=http://backend:8000
       # Optional: uncomment if using API key auth instead of subscription
       # - YOLO_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     restart: unless-stopped

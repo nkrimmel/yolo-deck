@@ -23,7 +23,7 @@ from .log_parser import parse_log_line
 
 logger = logging.getLogger(__name__)
 
-API_BASE = f"http://{settings.host}:{settings.port}"
+API_BASE = settings.telegram_api_base or f"http://{settings.host}:{settings.port}"
 
 
 # ── Auth Guard ──

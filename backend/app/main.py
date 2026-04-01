@@ -63,15 +63,32 @@ async def remove_project(project_id: str):
 
 
 @app.get("/api/browse")
-async def browse_directory(path: str = Query(default="~")) -> list[DirEntry]:
+async def browse_directory(path: str = Query(default="")) -> list[DirEntry]:
     """Verzeichnis-Inhalt für Dateibrowser auflisten."""
-    target = Path(path).expanduser().resolve()
+    browse_root = Path(settings.browse_root).expanduser().resolve()
+    logging.info("browse: path=%r, browse_root=%s", path, browse_root)
+    if not path or path.strip() == "~":
+        target = browse_root
+    elif path.startswith("~"):
+        target = browse_root / path[1:].lstrip("/")
+    else:
+        target = Path(path).resolve()
     if not target.is_dir():
-        raise HTTPException(404, f"Verzeichnis nicht gefunden: {path}")
+        raise HTTPException(404, f"Verzeichnis nicht gefunden: {target}")
 
     entries = []
+    def _sort_key(p: Path):
+        try:
+            return (not p.is_dir(), p.name.lower())
+        except PermissionError:
+            return (True, p.name.lower())
+
     try:
-        for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+        items = sorted(target.iterdir(), key=_sort_key)
+    except PermissionError:
+        raise HTTPException(403, f"Zugriff verweigert: {target}")
+    for item in items:
+        try:
             # Show hidden directories (needed for navigation), hide hidden files
             if item.name.startswith(".") and not item.is_dir():
                 continue
@@ -82,8 +99,8 @@ async def browse_directory(path: str = Query(default="~")) -> list[DirEntry]:
                 is_dir=item.is_dir(),
                 is_git=is_git,
             ))
-    except PermissionError:
-        raise HTTPException(403, f"Zugriff verweigert: {path}")
+        except PermissionError:
+            continue
     return entries
 
 

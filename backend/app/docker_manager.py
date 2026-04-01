@@ -11,6 +11,22 @@ def _shell_quote(s: str) -> str:
     return shlex.quote(s)
 
 
+def _to_host_path(container_path: Path) -> str:
+    """Translate a backend-container path to the equivalent host path.
+
+    In Docker, the host home is mounted as /host/home inside the backend
+    container.  Docker volume mounts need host paths, so we reverse the
+    mapping: /host/home/foo → $HOME/foo on the host.
+    """
+    path_str = str(container_path)
+    browse_root = str(Path(settings.browse_root).expanduser().resolve())
+    host_home = settings.host_home_path
+
+    if host_home and browse_root != "~" and path_str.startswith(browse_root):
+        return host_home + path_str[len(browse_root):]
+    return path_str
+
+
 class DockerManager:
     def __init__(self):
         self._client = None
@@ -46,17 +62,22 @@ class DockerManager:
         if settings.anthropic_api_key:
             environment["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
 
+        # Translate container paths to host paths for Docker volume mounts
+        host_workspace = _to_host_path(workspace_path)
+        host_claude_home = settings.claude_home_host or str(settings.claude_home)
+        host_claude_json = settings.claude_json_host or str(settings.claude_json)
+
         volumes = {
-            str(workspace_path): {
+            host_workspace: {
                 "bind": "/workspace",
                 "mode": "rw",
             },
             # Subscription auth — mount host credentials into container
-            str(settings.claude_home): {
+            host_claude_home: {
                 "bind": "/home/claude/.claude",
                 "mode": "rw",
             },
-            str(settings.claude_json): {
+            host_claude_json: {
                 "bind": "/home/claude/.claude.json",
                 "mode": "rw",
             },
