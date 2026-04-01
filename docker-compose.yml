@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./projects:/app/projects
+      - ./workspaces:/app/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker
+      - ~/.claude:/host-claude:ro        # Subscription auth credentials
+      - ~/.claude.json:/host-claude.json:ro
+      - ${HOME}:/host/home:ro            # Host-Home für Dateibrowser
+    environment:
+      - YOLO_PROJECTS_DIR=/app/projects
+      - YOLO_WORKSPACES_DIR=/app/workspaces
+      - YOLO_CLAUDE_HOME=/host-claude
+      - YOLO_CLAUDE_JSON=/host-claude.json
+      - YOLO_BROWSE_ROOT=/host/home
+      # Optional: uncomment if using API key auth instead of subscription
+      # - YOLO_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
