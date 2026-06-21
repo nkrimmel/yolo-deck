@@ -5,13 +5,16 @@ services:
       dockerfile: Dockerfile.backend
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./projects:/app/projects
       - ./workspaces:/app/workspaces
       - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker
       - ~/.claude:/host-claude:ro        # Subscription auth credentials
       - ~/.claude.json:/host-claude.json:ro
-      - ${HOME}:/host/home:ro            # Host-Home für Dateibrowser
+      - ${HOME}:/host/home                # Host-Home für Dateibrowser
+      - yolo-data:/app/data                 # SQLite database persistence
     environment:
       - YOLO_PROJECTS_DIR=/app/projects
       - YOLO_WORKSPACES_DIR=/app/workspaces
@@ -21,8 +24,15 @@ services:
       - YOLO_CLAUDE_JSON_HOST=${HOME}/.claude.json
       - YOLO_BROWSE_ROOT=/host/home
       - YOLO_HOST_HOME_PATH=${HOME}
+      - YOLO_DATABASE_PATH=/app/data/yolo_deck.db
+      # Auth token (leave empty to disable auth)
+      - YOLO_AUTH_TOKEN=${YOLO_AUTH_TOKEN:-}
+      # Max concurrent container runs
+      - YOLO_MAX_CONCURRENT_RUNS=${YOLO_MAX_CONCURRENT_RUNS:-3}
       # Optional: uncomment if using API key auth instead of subscription
       # - YOLO_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Ollama local LLM support (uncomment to override default)
+      # - YOLO_OLLAMA_BASE_URL=http://host.docker.internal:11434
     restart: unless-stopped
 
   frontend:
@@ -59,3 +69,6 @@ services:
       # Optional: uncomment if using API key auth instead of subscription
       # - YOLO_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     restart: unless-stopped
+
+volumes:
+  yolo-data:

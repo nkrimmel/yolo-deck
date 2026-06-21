@@ -22,6 +22,21 @@ def parse_log_line(raw: str) -> list[str]:
 
     msg_type = data.get("type")
 
+    # Interactive session messages
+    if msg_type == "prompt_start":
+        prompt_text = data.get("prompt", "")
+        prompt_num = data.get("prompt_number", 0)
+        lines = [f"--- Prompt #{prompt_num} ---"]
+        if prompt_text:
+            lines.append(f"> {prompt_text}")
+        return lines
+
+    if msg_type == "idle":
+        return ["[Bereit]"]
+
+    if msg_type == "keepalive":
+        return []
+
     # assistant message (text + tool_use blocks)
     if msg_type == "assistant" and data.get("message"):
         return _parse_assistant_message(data["message"])

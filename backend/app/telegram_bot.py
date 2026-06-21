@@ -51,8 +51,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Befehle:\n"
         "/run — Projekt auswählen und Prompt senden\n"
         "/projects — Projekte auflisten\n"
-        "/status — Laufende Runs\n"
-        "/stop — Run abbrechen",
+        "/status — Laufende Sessions\n"
+        "/stop — Session beenden",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -85,6 +85,17 @@ async def cmd_projects(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @authorized
 async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # If user has an active idle session, hint about it
+    active_run = context.user_data.get("active_run_id")
+    if active_run:
+        await update.message.reply_text(
+            f"Du hast noch eine aktive Session (`{active_run}`).\n"
+            "Schick einfach eine Nachricht als Follow-up, "
+            "oder beende sie mit /stop.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(f"{API_BASE}/api/projects")
@@ -127,12 +138,22 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not runs:
-        await update.message.reply_text("Keine aktiven Runs.")
+        await update.message.reply_text("Keine aktiven Sessions.")
         return
+
+    status_labels = {
+        "running": "Läuft",
+        "idle": "Bereit",
+        "queued": "Warteschlange",
+        "completed": "Fertig",
+        "failed": "Fehler",
+    }
 
     lines = []
     for run in runs:
-        lines.append(f"• `{run['run_id']}` — {run['status']} ({run.get('project_id', '?')})")
+        status = run.get("status", "?")
+        label = status_labels.get(status, status)
+        lines.append(f"• `{run['run_id']}` — {label} ({run.get('project_id', '?')})")
 
     await update.message.reply_text(
         "\n".join(lines),
@@ -142,6 +163,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @authorized
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Quick stop: if user has an active session, offer to stop it directly
+    active_run = context.user_data.get("active_run_id")
+
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(f"{API_BASE}/api/runs")
@@ -151,22 +175,25 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Fehler: {e}")
         return
 
-    active = [r for r in runs if r["status"] == "running"]
+    stoppable = [r for r in runs if r["status"] in ("running", "idle")]
 
-    if not active:
-        await update.message.reply_text("Keine aktiven Runs zum Stoppen.")
+    if not stoppable:
+        # Clear stale active_run_id if session is gone
+        context.user_data.pop("active_run_id", None)
+        context.user_data.pop("active_project_id", None)
+        await update.message.reply_text("Keine aktiven Sessions zum Beenden.")
         return
 
-    keyboard = [
-        [InlineKeyboardButton(
-            f"Stop {r['run_id']} ({r.get('project_id', '?')})",
+    keyboard = []
+    for r in stoppable:
+        status = "Bereit" if r["status"] == "idle" else "Läuft"
+        keyboard.append([InlineKeyboardButton(
+            f"Beenden: {r['run_id']} ({r.get('project_id', '?')}) [{status}]",
             callback_data=f"stop:{r['run_id']}",
-        )]
-        for r in active
-    ]
+        )])
 
     await update.message.reply_text(
-        "Welchen Run stoppen?",
+        "Welche Session beenden?",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -201,7 +228,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await client.post(f"{API_BASE}/api/run/{run_id}/stop")
         except Exception:
             pass
-        await query.edit_message_text(f"Run `{run_id}` gestoppt.", parse_mode=ParseMode.MARKDOWN)
+        # Clear active session if this was it
+        if context.user_data.get("active_run_id") == run_id:
+            context.user_data.pop("active_run_id", None)
+            context.user_data.pop("active_project_id", None)
+        await query.edit_message_text(
+            f"Session `{run_id}` beendet.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    elif data.startswith("end_session:"):
+        run_id = data.split(":", 1)[1]
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(f"{API_BASE}/api/run/{run_id}/stop")
+        except Exception:
+            pass
+        if context.user_data.get("active_run_id") == run_id:
+            context.user_data.pop("active_run_id", None)
+            context.user_data.pop("active_project_id", None)
+        await query.edit_message_text(
+            f"Container `{run_id}` beendet.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
 
 # ── Message Handler (Prompt) ──
@@ -212,18 +261,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if settings.telegram_allowed_users and user_id not in settings.telegram_allowed_users:
         return
 
-    project_id = context.user_data.get("selected_project")
-
-    if not project_id:
-        await update.message.reply_text("Wähle zuerst ein Projekt mit /run")
-        return
-
     prompt = update.message.text.strip()
     if not prompt:
         return
 
+    # Check if user has an active idle session → send follow-up prompt
+    active_run = context.user_data.get("active_run_id")
+    if active_run:
+        await _send_followup(update, context, active_run, prompt)
+        return
+
+    # Otherwise, start a new session
+    project_id = context.user_data.get("selected_project")
+    if not project_id:
+        await update.message.reply_text("Wähle zuerst ein Projekt mit /run")
+        return
+
+    await _start_new_session(update, context, project_id, prompt)
+
+
+async def _start_new_session(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    project_id: str,
+    prompt: str,
+):
+    """Start a new run and stream output until idle or finished."""
     status_msg = await update.message.reply_text(
-        f"*{project_id}* — Starte Run...\n\n`{prompt[:200]}`",
+        f"*{project_id}* — Starte Session...\n\n`{prompt[:200]}`",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -242,17 +307,83 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         run_id = run["run_id"]
 
         await status_msg.edit_text(
-            f"*{project_id}* — Run `{run_id}` gestartet\n\n`{prompt[:200]}`",
+            f"*{project_id}* — Session `{run_id}` gestartet\n\n`{prompt[:200]}`",
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        await stream_to_telegram(update, context, run_id)
+        # Stream until idle or finished
+        result = await stream_to_telegram(update, context, run_id)
+
+        if result == "idle":
+            # Session is alive — store for follow-up
+            context.user_data["active_run_id"] = run_id
+            context.user_data["active_project_id"] = project_id
+            # Keep selected_project for context
+        else:
+            # Session ended
+            context.user_data.pop("active_run_id", None)
+            context.user_data.pop("active_project_id", None)
+            context.user_data.pop("selected_project", None)
 
     except Exception as e:
         logger.exception("Run fehlgeschlagen")
         await update.message.reply_text(f"Fehler: {e}")
+        context.user_data.pop("selected_project", None)
 
-    context.user_data.pop("selected_project", None)
+
+async def _send_followup(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    run_id: str,
+    prompt: str,
+):
+    """Send a follow-up prompt to an idle session."""
+    project_id = context.user_data.get("active_project_id", "?")
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{API_BASE}/api/run/{run_id}/prompt",
+                json={"prompt": prompt},
+                timeout=30,
+            )
+            if res.status_code == 409:
+                # Session is not idle (maybe still running)
+                await update.message.reply_text(
+                    "Session ist noch nicht bereit. Bitte warten..."
+                )
+                return
+            if res.status_code == 404:
+                # Session gone
+                await update.message.reply_text(
+                    "Session nicht mehr vorhanden. Starte eine neue mit /run"
+                )
+                context.user_data.pop("active_run_id", None)
+                context.user_data.pop("active_project_id", None)
+                return
+            res.raise_for_status()
+    except httpx.HTTPStatusError:
+        await update.message.reply_text(f"Fehler beim Senden des Follow-up Prompts.")
+        return
+    except Exception as e:
+        logger.exception("Follow-up fehlgeschlagen")
+        await update.message.reply_text(f"Fehler: {e}")
+        return
+
+    await update.message.reply_text(
+        f"*{project_id}* — Follow-up gesendet\n\n`{prompt[:200]}`",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # Stream until idle or finished
+    result = await stream_to_telegram(update, context, run_id)
+
+    if result != "idle":
+        # Session ended
+        context.user_data.pop("active_run_id", None)
+        context.user_data.pop("active_project_id", None)
 
 
 # ── Live Streaming via Polling ──
@@ -262,8 +393,13 @@ async def stream_to_telegram(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     run_id: str,
-):
-    """Poll run details from the backend API and send parsed output to Telegram."""
+) -> str:
+    """Poll run details and send parsed output to Telegram.
+
+    Returns:
+        "idle" if session is waiting for follow-up,
+        "finished" if session completed/failed.
+    """
     chat_id = update.effective_chat.id
     max_len = settings.telegram_max_message_length
     poll_interval = 3.0
@@ -274,7 +410,7 @@ async def stream_to_telegram(
             async with httpx.AsyncClient() as client:
                 res = await client.get(f"{API_BASE}/api/run/{run_id}")
                 if res.status_code == 404:
-                    break
+                    return "finished"
                 res.raise_for_status()
                 details = res.json()
         except Exception as e:
@@ -303,9 +439,29 @@ async def stream_to_telegram(
             except Exception as e:
                 logger.warning("Telegram send error: %s", e)
 
-        # Check if run finished
+        # Check status
         status = details.get("status")
         container_status = details.get("container_status")
+
+        # Idle — session is waiting for follow-up
+        if status == "idle":
+            keyboard = [[InlineKeyboardButton(
+                "Container beenden",
+                callback_data=f"end_session:{run_id}",
+            )]]
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"Session `{run_id}` — *Bereit*\n\n"
+                    "Schick eine Nachricht als Follow-up Prompt, "
+                    "oder beende den Container."
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            return "idle"
+
+        # Finished
         is_finished = (
             status in ("completed", "failed")
             or container_status in ("exited", "removed")
@@ -316,16 +472,16 @@ async def stream_to_telegram(
             if exit_code == 0:
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text=f"Run `{run_id}` abgeschlossen",
+                    text=f"Session `{run_id}` abgeschlossen",
                     parse_mode=ParseMode.MARKDOWN,
                 )
             else:
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text=f"Run `{run_id}` fehlgeschlagen (Exit Code: {exit_code})",
+                    text=f"Session `{run_id}` fehlgeschlagen (Exit Code: {exit_code})",
                     parse_mode=ParseMode.MARKDOWN,
                 )
-            break
+            return "finished"
 
         await asyncio.sleep(poll_interval)
 

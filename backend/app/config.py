@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     claude_home_host: str = ""
     claude_json_host: str = ""
 
+    # Ollama
+    ollama_base_url: str = "http://host.docker.internal:11434"
+
     # Claude
     default_model: str = "claude-sonnet-4-20250514"
     max_turns: int = 50
@@ -45,6 +48,11 @@ class Settings(BaseSettings):
     telegram_allowed_users: list[int] = []
     telegram_max_message_length: int = 4000
     telegram_api_base: str = ""  # Backend URL for the bot (default: http://{host}:{port})
+
+    # Database
+    database_path: str = "yolo_deck.db"
+    max_concurrent_runs: int = 3
+    auth_token: str = ""
 
     # Server
     host: str = "0.0.0.0"

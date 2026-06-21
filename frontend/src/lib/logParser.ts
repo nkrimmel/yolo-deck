@@ -1,3 +1,5 @@
+import { StreamMessage, RunMetadata } from './types';
+
 /**
  * Parses Claude Code stream-json output into human-readable terminal lines.
  */
@@ -36,7 +38,12 @@ export function parseLogLine(raw: string): TerminalLine[] {
         return parseStreamEvent(json.event as Record<string, unknown>);
     }
 
-    // system messages
+    // user message (contains tool_result blocks after tool calls)
+    if (type === "user" && json.message) {
+        return parseUserMessage(json.message as Record<string, unknown>);
+    }
+
+    // system messages — only show actionable ones, skip noise
     if (type === "system") {
         const subtype = json.subtype as string | undefined;
         if (subtype === "api_retry") {
@@ -44,10 +51,36 @@ export function parseLogLine(raw: string): TerminalLine[] {
             const error = json.error ?? "";
             return [{ text: `[Retry ${attempt}] ${error}`, style: "system" }];
         }
-        if (subtype === "init") {
-            return [{ text: "Session gestartet", style: "system" }];
+        // Skip noisy system messages (init, task_notification, task_progress, etc.)
+        return [];
+    }
+
+    // Interactive session messages
+    if (type === "prompt_start") {
+        const promptText = (json.prompt as string) || "";
+        const promptNum = (json.prompt_number as number) || 0;
+        const lines: TerminalLine[] = [];
+        lines.push({ text: `--- Prompt #${promptNum} ---`, style: "system" });
+        if (promptText) {
+            lines.push({ text: `> ${promptText}`, style: "system" });
         }
-        return [{ text: `[System] ${subtype || ""}`, style: "system" }];
+        return lines;
+    }
+
+    if (type === "idle") {
+        return [{ text: "[Bereit]", style: "dim" }];
+    }
+
+    if (type === "keepalive") {
+        return [];
+    }
+
+    // Suppress noisy event types
+    if (type === "rate_limit_event" || type === "content_block_start" ||
+        type === "content_block_delta" || type === "content_block_stop" ||
+        type === "message_start" || type === "message_stop" ||
+        type === "ping" || type === "error_event") {
+        return [];
     }
 
     // result message (final output)
@@ -74,11 +107,31 @@ export function parseLogLine(raw: string): TerminalLine[] {
         return lines;
     }
 
-    // Unknown JSON — show type if available, otherwise raw
+    // Unknown JSON — suppress rather than showing raw
     if (type) {
-        return [{ text: `[${type}] ${JSON.stringify(json).slice(0, 200)}`, style: "dim" }];
+        return [];
     }
     return [{ text: trimmed, style: "text" }];
+}
+
+function parseUserMessage(message: Record<string, unknown>): TerminalLine[] {
+    const lines: TerminalLine[] = [];
+    const content = message.content as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(content)) return lines;
+
+    for (const block of content) {
+        const blockType = block.type as string;
+        if (blockType === "tool_result") {
+            const resultContent = block.content as string | undefined;
+            if (resultContent) {
+                const preview = resultContent.length > 300
+                    ? resultContent.slice(0, 300) + "..."
+                    : resultContent;
+                lines.push({ text: preview, style: "tool-result" });
+            }
+        }
+    }
+    return lines;
 }
 
 function parseAssistantMessage(message: Record<string, unknown>): TerminalLine[] {
@@ -180,4 +233,26 @@ export function parseLogLines(rawLines: string[]): TerminalLine[] {
         result.push(...parseLogLine(line));
     }
     return result;
+}
+
+/**
+ * Extract cost/duration/turns metadata from stream messages.
+ */
+export function extractRunMetadata(lines: StreamMessage[]): RunMetadata | null {
+    for (const line of lines) {
+        if (line.type !== "output") continue;
+        try {
+            const data = JSON.parse(line.data);
+            if (data.type === "result") {
+                return {
+                    cost: data.cost_usd ?? data.result?.cost_usd ?? undefined,
+                    duration: data.duration_ms ?? data.result?.duration_ms ?? undefined,
+                    turns: data.num_turns ?? data.result?.num_turns ?? undefined,
+                };
+            }
+        } catch {
+            continue;
+        }
+    }
+    return null;
 }
